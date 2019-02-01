@@ -253,7 +253,7 @@ class SlackSlashCommandView(APIView):
         ...  
 ```
 
-Which should show:
+Which should show something like:
 
 ![](https://i.imgur.com/cIaSPwA.png)
 
