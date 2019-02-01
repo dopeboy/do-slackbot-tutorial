@@ -1,11 +1,17 @@
-# Create a Slack bot using Django: Part I
+# Create a Slack bot using Django: Part I (Development environment)
 
-TODO: Course outline with current part bolded?
+## Outline
+
+This is first part of a three part series about creating a Slack bot in Django.
+
+1. Part I - Setup development environment and write a simple bot
+2. [Part II - Deploy the bot on DigitalOcean](tbd)
+3. [Part III - Add advanced features to the bot](tbd)
 
 ## Objectives
 
 * Setup a bot development environment.
-* Create a bot called `@timebot`. This bot will support one slash command, `/time`, which will return the current UTC time.
+* Create a bot that supports one slash command, `/time`, which will return the current UTC time.
 
 ## Prerequisites
 
@@ -15,23 +21,21 @@ TODO: Course outline with current part bolded?
 
 ## Architecture
 
-Before we start, let's sketch what our high level architecture looks like:
+Before we start, let's sketch what our high level architecture will look like:
 
-TODO: PUT PHOTO HERE
+![untitled diagram 1](https://i.imgur.com/YESLYNp.png)
 
-On the left, we have our local, development server. This server will run our Django code and expose a REST API.
+On the left, we have a Slack server that detects when a command to the bot is issued and sends a HTTP POST request to a service called ngrok **(1)** (we'll talk more about ngrok later). ngrok takes the contents of this request and copies it over to issues its own, new, HTTP POST request to our Django server **(2)**. Our server processes this HTTP request and responds to it **(3)**. ngrok takes the contents of our reply and copies it into the response to the _original_ request Slack made to us **(4)**.
 
-In the middle, we have a service that creates a tunnel to our local server. This is helpful because when Slack needs to respond to a query of ours, it must respond by sending a HTTP POST to a secure (https) URL under our control. So why don't we tell Slack to POST directly to the public IP of our local server? Several reasons including we might have a dynamically assigned IP (which means we would need to annoyingly change the configuration every so ofen), we might be behind a firewall, and/or we don't have a SSL certificate on hand. So we rely on an intermediate tunneling service, [ngrok](https://ngrok.com/), that creates a secure and publically accessible URL for us that we configure in Slack (more on this part later). Whatever it receives from Slack gets routed to us. Whatever we send to it will get passed on to Slack.
+Why do we need a middleman like ngrok? Why don't we tell Slack to POST directly to the public IP of our local server? Several reasons including we might have a dynamically assigned IP (which means we would need to annoyingly change the configuration every so often), we might be behind a firewall, and/or we don't have a SSL certificate on hand. So we rely on an intermediate tunneling service, [ngrok](https://ngrok.com/), that creates a secure and publicly accessible URL for us that we configure in Slack (more on this part later). Whatever it receives from Slack gets routed to us. Whatever we send to it will get passed on to Slack.
 
-On the right, we have Slack. When our bot is addressed in a Slack room, Slack will send a HTTP POST to us (through ngrok). When we want to send something to Slack, we'll send a HTTP POST to Slack (again, through ngrok).
-
-As a reminder, this archiecture is just for testing purposes as we design and develop our bot. When it comes time to deploy our bot on DigitalOcean for real users (in part II), we'll need to change it.
+As a reminder, this architecture is just for testing purposes as we design and develop our bot. When it comes time to deploy our bot on DigitalOcean for real users (in part II), we'll need to change it.
 
 ## Development environment
 
 ### Django
 
-Instead of building a Django project from scratch, we'll use one from off the shelf using [Cookiecutter](https://github.com/audreyr/cookiecutter). Let's download a preconfigured Django 2.X project using Python 3.X with Django Rest Framework preinstalled. Run the command below to download the project. Hit return for every prompt to accept defaults or else later commands will not work.
+Instead of building a Django project from scratch, we'll use one from off the shelf using [Cookiecutter](https://github.com/audreyr/cookiecutter). Let's download a pre-configured Django 2.X project using Python 3.X with Django Rest Framework preinstalled. Run the command below to download the project. Hit return for every prompt to accept defaults or else later commands will not work.
 
 `cookiecutter gh:agconti/cookiecutter-django-rest`
 
@@ -57,57 +61,46 @@ Now that we have our local development environment setup, let's configure Slack 
 
 If you haven't already, [create a Slack workspace](https://get.slack.help/hc/en-us/articles/206845317-Create-a-Slack-workspace). This is where we will install our bot and play with it.
 
-Next, we need to create a Slack app (don't let the term 'app' throw you off here; it's how Slack categorizes bots, among other things). Go to the [Create a Slack App](https://api.slack.com/apps?new_app=1) page and create an app like so (your workspace name may be different):
+Next, we need to create a Slack app (don't let the term 'app' throw you off here; it's how Slack categorizes bots). Go to the [Create a Slack App](https://api.slack.com/apps?new_app=1) page and create an app like so (your workspace name may be different):
 
-TODO: INSERT SCREENSHOT
+![image](https://user-images.githubusercontent.com/3834659/52091425-43280200-2569-11e9-939f-1bbf34194fbb.png)
 
-Next, we need to apply permission scopes to our app. These specify what our bot is and is not allowed to do. Slack requires atleast one scope be applied to our app. In our case, we just want our bot to send messages. Under the **Features** section, find the **OAuth & Permissions** button on the navigation menu:
+Next, we need to apply permission scopes to our app. These specify what our bot is and is not allowed to do. Slack requires atleast one scope be applied to our app. In our case, we just want our bot to send messages. Under the **Features** section, find the **OAuth & Permissions** button on the navigation menu. Scroll down to the **Scopes** section and add the `chat:write:bot` scope like so:
 
-TODO: INSERT SCREENSHOT
+![image](https://user-images.githubusercontent.com/3834659/52091783-761ec580-256a-11e9-8665-86be2f9c20fb.png)
 
-Scroll down to the **Scopes** section and add the `chat:write:bot` scope like so:
 
-TODO: INSERT SCREENSHOT
-
-We're almost there. We still need to install this app to our workspace. Under the **Settings** section, find the **Install App** button on the navigation menu:
-
-TODO: INSERT SCREENSHOT
-
-Click the "Install App to Workspace" button and then click "Authorize" on the subsequent page. Your Slack app and Slack workspace are now connected.
+We're almost there. We still need to install this app to our workspace. Under the **Settings** section, find the **Install App** button on the navigation menu. Click the "Install App to Workspace" button and then click "Authorize" on the subsequent page. Your Slack app and Slack workspace are now connected.
 
 Now, we need to configure our Slack app to support the slash command we want to run. This is a design decision Slack made: all slash commands must be predefined in the Slack app. In order to comply, let's look inside the **Features** section and find the ***Slash Commands** section:
-
-TODO: INSERT SCREENSHOT
 
 Click on "Create New Command" and fill out the form like so:
 
 ```
 Command: /time
 Request URL: <YOUR_HTTPS_NGROK_URL>/api/v1/bot/slashcommand/
-Short descripton: Show the current time in UTC.
+Short description: Show the current time in UTC.
 ```
 
 Note the request URL; this is the endpoint Slack will POST to when someone runs the slash command.
 
 Flip over to your workspace and type `/time`. Slack should show a hint like below. If it doesn't, refresh your workspace. 
 
-TODO: INSERT SCREENSHOT
+![image](https://user-images.githubusercontent.com/3834659/52092010-2987ba00-256b-11e9-9423-639efa99a087.png)
 
-Now, run the command in Slack. Uh oh. Wait. Do you see what I see?
+Now, run the command in Slack. Uh oh. Wait. Do you see this too?
 
-TODO INSERT SS
+![](https://i.imgur.com/CxMiOkt.png)
 
 Hrm. Let's flip over to our `ngrok` terminal:
 
-TODO INSERT SS
+![](https://i.imgur.com/LFMZU0b.png)
 
-Whoa, cool! Slack reached out to us with a POST request. However, looks like it got a `404` error from us:
+Whoa, cool! Slack reached out to us with a POST request. However, looks like it got a `502` error from us. That's OK, though! This is actually expected. We know the `/api/v1/users/` endpoint works but we haven't implemented the `/api/v1/bot/slashcommand/` endpoint. So Slack tried to reach out to us and we simply were't ready:
 
-TODO: INSERT SCREENSHOT
+![](https://i.imgur.com/f8DI1MH.png)
 
-That's OK, though! This is actually expected. We know the `/api/v1/users/` endpoint works but we haven't implemented the `/api/v1/bot/slashcommand/` endpoint. So Slack tried to reach out to us and we simply weren't ready. <MAYBE PHOTO SHOWING ARCH DIAGRAM MALFUNCTIONING HERE?> Let's pause and celebrate what we've accomplished though:
-
-**We now have an end-to-end connection setup between our local development environment and Slack.**
+Let's pause and celebrate what we've accomplished though: we now have an end-to-end connection setup between our local development environment and Slack.
 
 ## Application code
 
@@ -164,7 +157,7 @@ class SlackSlashCommandView(APIView):
 
 ```
 
-Here, we are printing the payload attached to any POST request that comes our way. (Note - I'm using `settings.DEBUG` to determine whether to print and `print()` to perform the actual printing; you may choose to use your own logger to simplify. Also, I'm allowing _anyone_ to POST us because of the lax permissions. In part II, we'll tighten this up).
+Here, we are printing the payload attached to any POST request that comes our way. (Note - I'm using `settings.DEBUG` to determine whether to print and `print()` to perform the actual printing; you may choose to use your own logger to simplify. Also, I'm allowing _anyone_ to POST to us because of the lax permissions. In part II, we'll tighten this up).
 
 Next, let's configure our `urls.py` to take notice of our new view. In `piedpiper/urls.py`, add the following up top:
 
@@ -212,11 +205,13 @@ Now we're all set. Let's try running our `/time` slash command again in our Slac
 *** INCOMING SLASH COMMAND END ***
 ```
 
-__Incredible.__ Check out all that data. Most of it seems self explanatory though `response_url` and `trigger_id` are a little mysterious. You'll also notice that Slack is no longer showing an error message in the workspace. It is getting a response from us now (albeit, empty) but that's enough to satisfy it.
+Incredible!
 
-In any case, we've verified what Slack is sending to us. Let's get back to our main task of responding to it so that our dear user, the one who issued `/time`, isn't left staring blankly at a responseless slash command.
+Check out all that data. Most of it seems self explanatory though `response_url` and `trigger_id` are a little mysterious. You'll also notice that Slack is no longer showing an error message in the workspace. It is getting a response from us now (albeit, empty) but that's enough to satisfy it.
 
-Slack offers [two ways](https://api.slack.com/apps/AFEN3KGMT/slash-commands?saved=1) to respond to slash commands; we'll chose the 'immediate response' method. What that means is when Slack sends us a POST request, we'll respond to it with a non-empty JSON payload. 
+In any case, we've verified what Slack is sending to us. Let's get back to our main task of responding to it so that our dear user, the one who issued `/time`, isn't left staring blankly at an unresponsive slash command.
+
+Slack offers [two ways](https://api.slack.com/apps/AFEN3KGMT/slash-commands?saved=1) to respond to slash commands; we'll chose the 'immediate response' method. What that means is when Slack sends us a POST request, we'll compose a response to it with a payload. 
 
 Earlier, in our `piedpiper/bot/views.py`, we were responding like so:
 
@@ -236,9 +231,11 @@ return Response({
 
 And now, when we rerun the slash command, we should see the following in our Slack workspace:
 
-TODO - INSERT PHOTO
+![](https://i.imgur.com/dY8j1J7.png)
 
-Amazing! Our local development server successfully responded to a slash command from Slack. We're returning a static string, which is great and all, but let's return the current UTC time. In our `views.py`, we'll need to import `datetime` up top and also adjust our `return` statement like so:
+Amazing! Our local development server successfully responded to a slash command from Slack. 
+
+While returning a static string is great and all, let's return something more interesting like the current UTC time. In our `views.py`, we'll need to import `datetime` up top and also adjust our `return` statement like so:
 
 ```
 ...
@@ -251,13 +248,13 @@ class SlackSlashCommandView(APIView):
         return Response({
                 "text": datetime.utcnow().strftime(
                     "%B %m, %Y %H:%M %p")
-            },
-            status=status.HTTP_200_OK
-        )        
+        ...  
 ```
 
-Which should so:
+Which should show:
 
-TODO - INSERT PHOTO
+![](https://i.imgur.com/cIaSPwA.png)
 
-Tada, we're all done!
+And tada, we're all done! Interested in seeing the entire code? Head over to the repo [here](https://github.com/dopeboy/do-slackbot-tutorial/tree/master/piedpiper-web).
+
+Continue to [Part II](tbd) to learn how we can deploy our bot onto a DigitalOcean droplet.
