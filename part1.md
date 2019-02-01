@@ -98,7 +98,7 @@ Hrm. Let's flip over to our `ngrok` terminal:
 
 Whoa, cool! Slack reached out to us with a POST request. However, looks like it got a `502` error from us. That's OK, though! This is actually expected. We know the `/api/v1/users/` endpoint works but we haven't implemented the `/api/v1/bot/slashcommand/` endpoint. So Slack tried to reach out to us and we simply were't ready:
 
-![](https://i.imgur.com/f8DI1MH.png)
+![](https://i.imgur.com/8cgsWWd.png)
 
 Let's pause and celebrate what we've accomplished though: we now have an end-to-end connection setup between our local development environment and Slack.
 
@@ -233,7 +233,9 @@ And now, when we rerun the slash command, we should see the following in our Sla
 
 ![](https://i.imgur.com/dY8j1J7.png)
 
-Amazing! Our local development server successfully responded to a slash command from Slack. 
+Amazing! Our local development server successfully responded to a slash command from Slack:
+
+![](https://i.imgur.com/XiTBhlu.png)
 
 While returning a static string is great and all, let's return something more interesting like the current UTC time. In our `views.py`, we'll need to import `datetime` up top and also adjust our `return` statement like so:
 
